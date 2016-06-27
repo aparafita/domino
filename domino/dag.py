@@ -92,6 +92,17 @@ class DAGNode:
                     to_yield.append(target)
 
 
+    def __getitem__(self, key):
+        if type(key) == str:
+            for target in self.targets:
+                if target.name == key:
+                    return target
+            else:
+                raise KeyError(key)
+        else:
+            raise TypeError(key)
+
+
     def __iter__(self):
         return self.yield_nodes()
 

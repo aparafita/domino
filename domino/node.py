@@ -101,6 +101,21 @@ class Node(DAGNode):
         self.state = Node.State.IDLE
         self.variables = {}
 
+        self.store_result = True
+
+
+    @property
+    def state(self):
+        return self._state
+
+
+    @state.setter
+    def state(self, value):
+        self._state = value
+
+        if self._state != Node.State.FINISHED and hasattr(self, '_result'):
+            del self._result
+
 
     def reset_errors(self):
         """
@@ -129,7 +144,7 @@ class Node(DAGNode):
         if hasattr(self, '_result'):
             return self._result
         else:
-            raise Exception('Node has not run yet')
+            return self.run()
 
 
     @result.setter
@@ -159,36 +174,37 @@ class Node(DAGNode):
         return self.result
 
 
-    def run(self, filename, load=True):
+    def load(self, filename):
+        try:
+            with open(filename) as f:
+                l = json.loads(f.read())
+        except FileNotFoundError:
+            return
+
+        nodes = list(self)
+
+        if len(nodes) != len(l):
+            raise Exception('Loaded tree doesn\'t match given tree')
+
+        for node, node_d in zip(nodes, l):
+            if node.name != node_d['name']:
+                raise Exception(
+                    'Loaded tree definition doesn\'t match given tree'
+                )
+
+            node.state = node_d['state']
+            node.variables = node_d['variables']
+
+            if 'result' in node_d:
+                node.result = node_d['result']
+
+
+    def run(self, filename=None, load=True):
         """ Method used to run this node as the root of a DAG """
 
         # Try loading the tree before starting
-        if load:
-            l = None
-
-            try:
-                with open(filename) as f:
-                    l = json.loads(f.read())
-            except FileNotFoundError:
-                pass
-
-            if l:
-                nodes = list(self)
-
-                if len(nodes) != len(l):
-                    raise Exception('Loaded tree doesn\'t match given tree')
-
-                for node, node_d in zip(nodes, l):
-                    if node.name != node_d['name']:
-                        raise Exception(
-                            'Loaded tree definition doesn\'t match given tree'
-                        )
-
-                    node.state = node_d['state']
-                    node.variables = node_d['variables']
-
-                    if 'result' in node_d:
-                        node.result = node_d['result']
+        if filename is not None and load:
+            self.load(filename)
 
         # Restart all sources of a node that had an error
         for node in self:
@@ -266,15 +282,21 @@ class Node(DAGNode):
                         sleep()
 
         except KeyboardInterrupt:
-            self.save(filename)
+            if filename is not None:
+                self.save(filename)
             raise
 
-        self.save(filename)
+        if filename is not None:
+            self.save(filename)
 
         if self.state == Node.State.FINISHED:
             return self.result
         else:
             raise Exception('Tree finished with errors')
+
+
+    def reset(self):
+        self.state = Node.State.IDLE
 
 
     def save(self, filename):
@@ -292,7 +314,7 @@ class Node(DAGNode):
                 'variables': node.variables   
             }
 
-            if hasattr(node, '_result'):
+            if node.store_result and hasattr(node, '_result'):
                 d['result'] = node.result
 
             l.append(d)
@@ -317,6 +339,13 @@ class Root(Node):
     """
 
     def __init__(self, name, *nodes):
+        # Save all nodes that this root contains
+        self.subnodes = {
+            target
+            for node in nodes
+            for target in node
+        }
+
         self.original_leaves = [
             target
             for node in nodes # cross the graph
@@ -354,3 +383,30 @@ class Root(Node):
                     original_leaf.rm(target)
         else:
             super().rm(target)
+
+
+    def reset(self):
+        """
+            Reset state to IDLE of all nodes that originally defined this Root
+        """
+
+        for node in self.subnodes:
+            node.state = Node.State.IDLE
+
+        self.state = Node.State.IDLE
+
+
+class OpNode(Node):
+
+    """
+        OpNode stands for OperationalNode.
+
+        Special type of Node that is meant not to store 
+        the result its function returns. 
+        It just saves the result in memory and 
+        it can be rerun every time it's needed
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.store_result = False
