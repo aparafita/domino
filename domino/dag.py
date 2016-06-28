@@ -99,6 +99,9 @@ class DAGNode:
                     return target
             else:
                 raise KeyError(key)
+        elif type(key) in (int, slice):
+            targets = sorted(self.targets, key=lambda x: x.name)
+            return targets[key]
         else:
             raise TypeError(key)
 
