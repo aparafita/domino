@@ -3,6 +3,9 @@
 from functools import total_ordering
 from traceback import print_exc
 from io import StringIO
+from copy import deepcopy
+
+import os.path
 
 import time
 from datetime import datetime, timedelta
@@ -10,19 +13,7 @@ from datetime import datetime, timedelta
 import json
 
 from .dag import DAGNode
-
-
-def bound(func):
-    """
-        Decorator that identifies a function as bound for a domino Graph.
-        That means that the first parameter of the decorated function
-        will be the node that contains it.
-    """
-
-    func.__bound__ = True
-    return func
-
-bound.is_bound = lambda func: getattr(func, '__bound__', False)
+from .decorators import bound
 
 
 @total_ordering
@@ -144,6 +135,7 @@ class Node(DAGNode):
         if hasattr(self, '_result'):
             return self._result
         else:
+            self.state = Node.State.IDLE
             return self.run()
 
 
@@ -156,7 +148,7 @@ class Node(DAGNode):
         func, args, kwargs = self.item
 
         args = [
-            arg.result if isinstance(arg, Node) else arg
+            deepcopy(arg.result) if isinstance(arg, Node) else arg
             for arg in args
         ]
 
@@ -165,7 +157,7 @@ class Node(DAGNode):
             args = [ self ] + args
 
         kwargs = {
-            k: v.result if isinstance(v, Node) else v
+            k: deepcopy(v.result) if isinstance(v, Node) else v
             for k, v in kwargs.items()
         }
 
@@ -295,8 +287,12 @@ class Node(DAGNode):
             raise Exception('Tree finished with errors')
 
 
-    def reset(self):
-        self.state = Node.State.IDLE
+    def reset(self, state=State.IDLE):
+        if hasattr(self, '_result'):
+            del self._result
+
+        if state is not None:
+            self.state = state
 
 
     def save(self, filename):
@@ -355,7 +351,11 @@ class Root(Node):
 
         super().__init__(
             name, 
-            lambda *args: list(args),
+            lambda *args: [ 
+                arg 
+                for node, arg in zip(nodes, args) 
+                if node.store_result 
+            ],
             *nodes
         )
 

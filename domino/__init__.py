@@ -3,4 +3,5 @@
 __version__ = '0.1.1'
 
 
-from .node import Node, Root, Sleep, bound, OpNode
+from .node import Node, Root, Sleep, OpNode
+from .decorators import domino, bound
