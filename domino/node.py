@@ -46,7 +46,8 @@ class Sleep(Exception):
         if self.NOTIFY_AT >= 0 and rem >= self.NOTIFY_AT: 
             print('Asleep for %.2f seconds. Waking up at %s' % (rem, self.end))
 
-        sleep(rem)
+        if rem > 0:
+            sleep(rem)
 
 
     def __eq__(self, other): return self.end == other.end
