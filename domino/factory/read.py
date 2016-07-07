@@ -3,6 +3,7 @@
 from ..decorators import domino
 from ..node import OpNode
 
+
 @domino('read_gzip.{filename}', node_class=OpNode)
 def read_gzip(
     filename, 

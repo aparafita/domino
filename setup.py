@@ -7,7 +7,7 @@ import domino
 
 setup(
     name = "domino",
-    packages = ["domino", "domino.factory"],
+    packages = ["domino", "domino.factory", "domino.utils"],
     version = domino.__version__,
     description = "Library to structure processes",
     author = "Álvaro Parafita",
