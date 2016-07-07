@@ -191,7 +191,7 @@ class Node(DAGNode):
                 node.result = node_d['result']
 
 
-    def run(self, filename=None, load=True):
+    def run(self, filename=None, load=True, save_wait=10):
         """ Method used to run this node as the root of a DAG """
 
         # Try loading the tree before starting
@@ -220,6 +220,7 @@ class Node(DAGNode):
         execution_queue = set(queue(self))
         wait_queue = set()
 
+        processed_nodes = 0
         try:
             while execution_queue or wait_queue:
                 while execution_queue:
@@ -257,6 +258,12 @@ class Node(DAGNode):
                     for source in node.sources:
                         for node in queue(source):
                             execution_queue.add(node)
+
+                    processed_nodes += 1
+
+                    if filename is not None and processed_nodes == save_wait:
+                        self.save(filename)
+                        processed_nodes = 0
 
                 while wait_queue:
                     wait_queue = {
