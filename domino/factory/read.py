@@ -39,3 +39,16 @@ def read_gzip(
             apply(line) if apply else line
             for line in f
         ]
+
+
+@domino('read_csv.{filename}', node_class=OpNode)
+def read_csv(filename, *args, **kwargs):
+    """
+        Reads a csv and returns its contents in a DataFrame.
+
+        All *args and **kwargs are passed to the pd.read_csv function.
+    """
+
+    import pandas as pd
+
+    return pd.read_csv(filename, *args, **kwargs)
