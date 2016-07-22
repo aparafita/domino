@@ -69,6 +69,8 @@ class Node(DAGNode):
         all the different states a Node can be in.
     """
 
+    silent = False
+
     class State:
 
         IDLE = 'idle'
@@ -228,20 +230,23 @@ class Node(DAGNode):
                     node = execution_queue.pop()
 
                     try:
-                        print('START: '.ljust(9) + node.name)
+                        if not node.silent:
+                            print('START: '.ljust(9) + node.name)
 
                         node.state = Node.State.RUNNING
                         node() # run its function
                         node.state = Node.State.FINISHED
 
-                        print('END: '.ljust(9) + node.name)
+                        if not node.silent:
+                            print('END: '.ljust(9) + node.name)
                     except KeyboardInterrupt:
                         raise # don't catch this exception
                     except Sleep as e:
                         node.state = Node.State.DELAYED
                         wait_queue.add((node, e))
 
-                        print('DELAYED: '.ljust(9) + node.name)
+                        if not node.silent:
+                            print('DELAYED: '.ljust(9) + node.name)
 
                         continue
                     except Exception as e:
@@ -252,13 +257,16 @@ class Node(DAGNode):
                         print_exc(file=s)
                         node.variables['@domino.traceback'] = s.getvalue()
 
-                        print('ERROR: '.ljust(9) + node.name)
+                        if not node.silent:
+                            print('ERROR: '.ljust(9) + node.name)
 
                         continue
 
                     for source in node.sources:
-                        for node in queue(source):
-                            execution_queue.add(node)
+                        # Execute only nodes that self does depend on
+                        if source in self: 
+                            for node in queue(source):
+                                execution_queue.add(node)
 
                     processed_nodes += 1
 
@@ -335,12 +343,30 @@ class Node(DAGNode):
     def __hash__(self): return hash(self.item[0])
 
 
-class Root(Node):
+class OpNode(Node):
+
+    """
+        OpNode stands for OperationalNode.
+
+        Special type of Node that is meant not to store 
+        the result its function returns. 
+        It just saves the result in memory and 
+        it can be rerun every time it's needed
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.store_result = False
+
+
+class Root(OpNode):
     """
         Special Node that only returns the results of the specified nodes.
         Used to contain several functions in a unique node 
         in order to run them with a same graph.
     """
+
+    silent = True
 
     def __init__(self, name, *nodes):
         # Save all nodes that this root contains
@@ -402,19 +428,3 @@ class Root(Node):
             node.state = Node.State.IDLE
 
         self.state = Node.State.IDLE
-
-
-class OpNode(Node):
-
-    """
-        OpNode stands for OperationalNode.
-
-        Special type of Node that is meant not to store 
-        the result its function returns. 
-        It just saves the result in memory and 
-        it can be rerun every time it's needed
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.store_result = False
