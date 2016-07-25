@@ -202,7 +202,8 @@ class Node(DAGNode):
             self.load(filename)
 
         # Restart all sources of a node that had an error
-        for node in self:
+        in_self = set(self) # preprocess it to save time
+        for node in in_self:
             if node.state == Node.State.ERROR:
                 node.reset_errors()
             elif node.state != Node.State.FINISHED:
@@ -264,7 +265,7 @@ class Node(DAGNode):
 
                     for source in node.sources:
                         # Execute only nodes that self does depend on
-                        if source in self: 
+                        if source in in_self: 
                             for node in queue(source):
                                 execution_queue.add(node)
 
