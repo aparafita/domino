@@ -10,7 +10,8 @@ def read_gzip(
     limit=None, 
     decode=None, 
     apply=None, 
-    file_wrapper=lambda f: f
+    file_wrapper=lambda f: f,
+    open_mode='rt'
 ):
     """
         Reads file with name 'filename',
@@ -20,18 +21,21 @@ def read_gzip(
         
         A wrapper for the file can be used to read lines from it 
         (preferably an iterator).
+
+        File will be opened with open_mode mode (default is rt, for 'read text')
     """
     
     import gzip
     
     def yield_lines(f):
         for n, line in enumerate(f):
+            line = line.strip('\n')
             if limit is None or n < limit:
                 yield line.decode(decode) if decode else line
             else:
                 break
         
-    with gzip.open(filename, 'rb') as f:
+    with gzip.open(filename, open_mode) as f:
         if file_wrapper is not None:
             f = file_wrapper(yield_lines(f))
         
