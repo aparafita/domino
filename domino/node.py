@@ -165,7 +165,6 @@ class Node(DAGNode):
         }
 
         self.result = func(*args, **kwargs)
-
         return self.result
 
 
@@ -209,19 +208,27 @@ class Node(DAGNode):
             elif node.state != Node.State.FINISHED:
                 node.state = Node.State.IDLE
         
-        def queue(node):
+        # def queue(node):
+        #     if node.state == Node.State.IDLE and all(
+        #         target.state == Node.State.FINISHED 
+        #         for target in node.targets
+        #     ):
+        #         yield node
+
+        #     else:
+        #         for target in node.targets:
+        #             for node2 in queue(target):
+        #                 yield node2
+
+        # execution_queue = set(queue(self))
+        execution_queue = {
+            node
+            for node in set(self)
             if node.state == Node.State.IDLE and all(
                 target.state == Node.State.FINISHED 
                 for target in node.targets
-            ):
-                yield node
-
-            else:
-                for target in node.targets:
-                    for node2 in queue(target):
-                        yield node2
-
-        execution_queue = set(queue(self))
+            )
+        }
         wait_queue = set()
 
         processed_nodes = 0
@@ -266,8 +273,19 @@ class Node(DAGNode):
                     for source in node.sources:
                         # Execute only nodes that self does depend on
                         if source in in_self: 
-                            for node in queue(source):
-                                execution_queue.add(node)
+                            # for node in queue(source):
+                            #     execution_queue.add(node)
+                            execution_queue.update(
+                                {
+                                    node
+                                    
+                                    for node in set(source)
+                                    if node.state == Node.State.IDLE and all(
+                                        target.state == Node.State.FINISHED 
+                                        for target in node.targets
+                                    )
+                                }
+                            )
 
                     processed_nodes += 1
 
@@ -299,6 +317,7 @@ class Node(DAGNode):
             self.save(filename)
 
         if self.state == Node.State.FINISHED:
+            #print(self)
             return self.result
         else:
             raise Exception('Tree finished with errors')
