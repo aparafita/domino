@@ -350,7 +350,7 @@ class Node(DAGNode):
             raise Exception('Loaded tree doesn\'t match given tree')
 
         n = 0
-        for node in enumerate(nodes):
+        for node in nodes:
             if node in loaded_nodes: continue
             node_d = l[n]            
 
