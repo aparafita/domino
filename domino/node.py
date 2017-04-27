@@ -349,8 +349,10 @@ class Node(DAGNode):
         if len(set(nodes)) != len(l):
             raise Exception('Loaded tree doesn\'t match given tree')
 
-        for node, node_d in zip(nodes, l):
+        n = 0
+        for node in enumerate(nodes):
             if node in loaded_nodes: continue
+            node_d = l[n]            
 
             if node.name != node_d['name']:
                 raise Exception(
@@ -364,6 +366,7 @@ class Node(DAGNode):
                 node.result = node_d['result']
 
             loaded_nodes.add(node)
+            n += 1
 
 
     def __iter__(self): 
