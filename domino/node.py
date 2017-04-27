@@ -168,31 +168,6 @@ class Node(DAGNode):
         return self.result
 
 
-    def load(self, filename):
-        try:
-            with open(filename) as f:
-                l = json.loads(f.read())
-        except FileNotFoundError:
-            return
-
-        nodes = list(self)
-
-        if len(nodes) != len(l):
-            raise Exception('Loaded tree doesn\'t match given tree')
-
-        for node, node_d in zip(nodes, l):
-            if node.name != node_d['name']:
-                raise Exception(
-                    'Loaded tree definition doesn\'t match given tree'
-                )
-
-            node.state = node_d['state']
-            node.variables = node_d['variables']
-
-            if 'result' in node_d:
-                node.result = node_d['result']
-
-
     def run(self, filename=None, load=True, save_wait=10):
         """ Method used to run this node as the root of a DAG """
 
@@ -338,8 +313,11 @@ class Node(DAGNode):
         """
 
         l = []
+        saved_nodes = set()
 
         for node in self:
+            if node in saved_nodes: continue
+
             d = {
                 'name': node.name,
                 'state': node.state,
@@ -350,11 +328,42 @@ class Node(DAGNode):
                 d['result'] = node.result
 
             l.append(d)
+            saved_nodes.add(node)
 
         j = json.dumps(l, indent=2)
 
         with open(filename, 'w') as f:
             f.write(j)
+
+
+    def load(self, filename):
+        try:
+            with open(filename) as f:
+                l = json.loads(f.read())
+        except FileNotFoundError:
+            return
+
+        nodes = list(self)
+        loaded_nodes = set()
+
+        if len(nodes) != len(l):
+            raise Exception('Loaded tree doesn\'t match given tree')
+
+        for node, node_d in zip(nodes, l):
+            if node in loaded_nodes: continue
+
+            if node.name != node_d['name']:
+                raise Exception(
+                    'Loaded tree definition doesn\'t match given tree'
+                )
+
+            node.state = node_d['state']
+            node.variables = node_d['variables']
+
+            if 'result' in node_d:
+                node.result = node_d['result']
+
+            loaded_nodes.add(node)
 
 
     def __iter__(self): 
