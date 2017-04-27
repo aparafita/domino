@@ -346,7 +346,7 @@ class Node(DAGNode):
         nodes = list(self)
         loaded_nodes = set()
 
-        if len(nodes) != len(l):
+        if len(set(nodes)) != len(l):
             raise Exception('Loaded tree doesn\'t match given tree')
 
         for node, node_d in zip(nodes, l):
