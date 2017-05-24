@@ -1,5 +1,29 @@
 # Author: Álvaro Parafita (parafita.alvaro@gmail.com)
 
+"""
+    Module that contains utility functions chain and link.
+
+    chain tries to mimick the magrittr %>% pipe from R.
+    It is a function call where each result passes to the next function
+    as their first argument. 
+
+    One can use link in two ways:
+        * As a way of currying some of the arguments for a function call:
+            link(func, arg1, arg2, kwarg1=val1)
+        * As a placeholder for the "previous" result. 
+            If link appears as an argument of a function call, 
+            then it will not be placed as the first argument of the call.
+            It will just appear wherever link is placed.
+
+    Finally, if a string is passed as a function to apply, 
+    chain will read it as the method assigned to the previous result
+    that has that name.
+
+    Two abbreviatures are included: 
+        * dc (which stands for domino chain)
+        * dl (which stands for domino.link)
+"""
+
 class _Link:
 
     def __init__(self, func, *args, **kwargs):
