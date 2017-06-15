@@ -128,9 +128,9 @@ class Node(DAGNode):
                 del node.variables['@domino.traceback']
             idled.add(node)
 
-            for source in node.sources:
-                if source not in idled:
-                    to_idle.add(source)
+            # for source in node.sources:
+            #     if source not in idled:
+            #         to_idle.add(source)
 
 
     @property
@@ -175,42 +175,45 @@ class Node(DAGNode):
         if filename is not None and load:
             self.load(filename)
 
-        # Restart all sources of a node that had an error
-        in_self = set(self) # preprocess it to save time
-        for node in in_self:
-            if node.state == Node.State.ERROR:
-                node.reset_errors()
-            elif node.state != Node.State.FINISHED:
+        for node in set(self):
+            if node.state != Node.State.FINISHED \
+                or not hasattr(node, '_result'):
                 node.state = Node.State.IDLE
-        
-        # def queue(node):
-        #     if node.state == Node.State.IDLE and all(
-        #         target.state == Node.State.FINISHED 
-        #         for target in node.targets
-        #     ):
-        #         yield node
 
-        #     else:
-        #         for target in node.targets:
-        #             for node2 in queue(target):
-        #                 yield node2
+        def stack_targets(node, stack=None, stacked_nodes=None):
+            if stack is None: stack = []
+            if stacked_nodes is None: stacked_nodes = set()
 
-        # execution_queue = set(queue(self))
-        execution_queue = {
-            node
-            for node in set(self)
-            if node.state == Node.State.IDLE and all(
-                target.state == Node.State.FINISHED 
-                for target in node.targets
-            )
-        }
+            if node.state != Node.State.FINISHED and \
+                node not in stacked_nodes:
+                stacked_nodes.add(node)
+                stack.append(node)
+
+                for target in node.targets:
+                    stack_targets(target, stack, stacked_nodes)
+
+            return stack
+
+        def unstack_sources(node, stack, removed=None):
+            if removed is None: removed = set()
+
+            if node not in removed:
+                if node in stack:
+                    stack.remove(node)
+
+                removed.add(node)
+
+                for source in node.sources:
+                    unstack_sources(source, stack, removed)
+
+        execution_stack = stack_targets(self)
         wait_queue = set()
 
         processed_nodes = 0
         try:
-            while execution_queue or wait_queue:
-                while execution_queue:
-                    node = execution_queue.pop()
+            while execution_stack or wait_queue:
+                while execution_stack:
+                    node = execution_stack.pop()
 
                     try:
                         if not node.silent:
@@ -231,6 +234,10 @@ class Node(DAGNode):
                         if not node.silent:
                             print('DELAYED: '.ljust(9) + node.name)
 
+                        # All nodes that hang on this node should be removed 
+                        # from the execution stack
+                        unstack_sources(node, execution_stack)
+
                         continue
                     except Exception as e:
                         node.state = Node.State.ERROR
@@ -243,24 +250,11 @@ class Node(DAGNode):
                         if not node.silent:
                             print('ERROR: '.ljust(9) + node.name)
 
-                        continue
+                        # All nodes that hang on this node should be removed 
+                        # from the execution stack
+                        unstack_sources(node, execution_stack)
 
-                    for source in node.sources:
-                        # Execute only nodes that self does depend on
-                        if source in in_self: 
-                            # for node in queue(source):
-                            #     execution_queue.add(node)
-                            execution_queue.update(
-                                {
-                                    node
-                                    
-                                    for node in set(source)
-                                    if node.state == Node.State.IDLE and all(
-                                        target.state == Node.State.FINISHED 
-                                        for target in node.targets
-                                    )
-                                }
-                            )
+                        continue
 
                     processed_nodes += 1
 
@@ -269,15 +263,30 @@ class Node(DAGNode):
                         processed_nodes = 0
 
                 while wait_queue:
+                    wait_length = len(wait_queue)
                     wait_queue = {
                         (node, sleep)
                         for node, sleep in wait_queue
-                        if (sleep.remaining() > 0) or execution_queue.add(node)
+                        if (sleep.remaining() > 0)
                         # notice that if we get to the add, 
                         # the if will be False because add returns None
                     }
 
-                    if execution_queue:
+                    if wait_length > len(wait_queue):
+                        # Reform execution_stack omitting those nodes in queue
+                        execution_stack = stack_targets(
+                            self, stacked_nodes={
+                                node
+                                for node, _ in wait_queue
+                            }
+                        )
+
+                        # But also unstack nodes that are sources 
+                        # of nodes in wait
+                        for node, _ in wait_queue:
+                            unstack_sources(node, execution_stack)
+
+                    if execution_stack:
                         break # something to execute, so don't sleep more
                     else:
                         node, sleep = min(wait_queue, key=lambda pair: pair[1])
@@ -292,7 +301,6 @@ class Node(DAGNode):
             self.save(filename)
 
         if self.state == Node.State.FINISHED:
-            #print(self)
             return self.result
         else:
             raise Exception('Tree finished with errors')
