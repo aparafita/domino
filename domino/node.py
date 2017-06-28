@@ -53,6 +53,7 @@ class Sleep(Exception):
     def __eq__(self, other): return self.end == other.end
     def __le__(self, other): return self.end <= other.end
     def __hash__(self): return hash(self.end)
+    def __bool__(self): return self.remaining() > 0
 
 
 class Node(DAGNode):
@@ -96,6 +97,7 @@ class Node(DAGNode):
         self.variables = {}
 
         self.store_result = True
+        self.sleep = None
 
 
     @property
@@ -230,7 +232,7 @@ class Node(DAGNode):
         """ Method used to run this node as the root of a DAG """
 
         # Try loading the tree before starting
-        if filename is not None and load:
+        if filename and load:
             self.load(filename)
 
         # Reset errors and their sources
@@ -244,130 +246,125 @@ class Node(DAGNode):
                 or not hasattr(node, '_result'):
                 node.state = Node.State.IDLE
 
-        def stack_targets(node, stack=None, stacked_nodes=None):
-            if stack is None: stack = []
-            if stacked_nodes is None: stacked_nodes = set()
+        ready_to_run = lambda node: (
+            not node.sleep and 
+            node.state in (
+                Node.State.IDLE, Node.State.DELAYED
+            ) and all(
+                target.state == Node.State.FINISHED
+                for target in node.targets
+            )
+        )
 
-            if node.state != Node.State.FINISHED and \
-                node not in stacked_nodes:
-                stacked_nodes.add(node)
-                stack.append(node)
+        def run(node):
+            if not node.silent:
+                print('START: '.ljust(9) + node.name)
 
-                for target in node.targets:
-                    stack_targets(target, stack, stacked_nodes)
+            node.state = Node.State.RUNNING
+            node() # run its function
+            node.state = Node.State.FINISHED
 
-            return stack
+            if not node.silent:
+                print('END: '.ljust(9) + node.name)
 
-        def unstack_sources(node, stack, removed=None):
-            if removed is None: removed = set()
 
-            if node not in removed:
-                if node in stack:
-                    stack.remove(node)
+        # Let's start running
+        iterations = 0
+        executed = set() 
+        asleep = set()
+        current_node = self
 
-                removed.add(node)
-
-                for source in node.sources:
-                    unstack_sources(source, stack, removed)
-
-        execution_stack = stack_targets(self)
-        wait_queue = set()
-
-        processed_nodes = 0
         try:
-            while execution_stack or wait_queue:
-                while execution_stack:
-                    node = execution_stack.pop()
+            while self.state != Node.State.FINISHED:
+                found = False # will be True when a node is run
 
-                    try:
-                        if not node.silent:
-                            print('START: '.ljust(9) + node.name)
+                try:
+                    stack = [ 
+                        source for source in current_node.sources 
+                    ] if current_node.sources else [ self ]
+                    stacked = set(stack)
 
-                        node.state = Node.State.RUNNING
-                        node() # run its function
-                        node.state = Node.State.FINISHED
+                    while stack:
+                        node = stack.pop()
 
-                        if not node.silent:
-                            print('END: '.ljust(9) + node.name)
-                    except KeyboardInterrupt:
-                        raise # don't catch this exception
-                    except Sleep as e:
-                        node.state = Node.State.DELAYED
-                        wait_queue.add((node, e))
+                        if ready_to_run(node):
+                            run(node)
+                            executed.add(node)
 
-                        if not node.silent:
-                            print('DELAYED: '.ljust(9) + node.name)
+                            current_node = node
+                            found = True
+                            break
+                        else:
+                            for node in node.targets:
+                                if node not in stacked and node not in executed:
+                                    stack.append(node)
+                                    stacked.add(node)
 
-                        # All nodes that hang on this node should be removed 
-                        # from the execution stack
-                        unstack_sources(node, execution_stack)
+                    if found:
+                        iterations += 1
 
-                        continue
-                    except Exception as e:
-                        node.state = Node.State.ERROR
+                except Sleep as s:
+                    print('DELAYED: '.ljust(9) + node.name)
+                    node.sleep = s
+                    node.state = Node.State.DELAYED
+                    asleep.add(node)
 
-                        # Save traceback in variables to check later
-                        s = StringIO()
-                        print_exc(file=s)
-                        node.variables['@domino.traceback'] = s.getvalue()
+                    # We'll continue with the previous current_node
+                    continue 
 
-                        if not node.silent:
-                            print('ERROR: '.ljust(9) + node.name)
+                except Exception:
+                    node.state = Node.State.ERROR
 
-                        # All nodes that hang on this node should be removed 
-                        # from the execution stack
-                        unstack_sources(node, execution_stack)
+                    # Save traceback in variables to check later
+                    s = StringIO()
+                    print_exc(file=s)
+                    node.variables['@domino.traceback'] = s.getvalue()
 
-                        continue
+                    if not node.silent:
+                        print('ERROR: '.ljust(9) + node.name)
 
-                    processed_nodes += 1
-
-                    if filename is not None and processed_nodes == save_wait:
+                    if filename:
                         self.save(filename)
-                        processed_nodes = 0
 
-                while wait_queue:
-                    wait_length = len(wait_queue)
-                    wait_queue = {
-                        (node, sleep)
-                        for node, sleep in wait_queue
-                        if (sleep.remaining() > 0)
-                        # notice that if we get to the add, 
-                        # the if will be False because add returns None
-                    }
+                    raise
 
-                    if wait_length > len(wait_queue):
-                        # Reform execution_stack omitting those nodes in queue
-                        execution_stack = stack_targets(
-                            self, stacked_nodes={
-                                node
-                                for node, _ in wait_queue
-                            }
+                if not found:
+                    if asleep:
+                        # Some Nodes must be asleep 
+                        # and they're the only ones that can run.                            
+                        current_node = min(
+                            asleep,
+                            key=lambda node: node.sleep.remaining()
                         )
 
-                        # But also unstack nodes that are sources 
-                        # of nodes in wait
-                        for node, _ in wait_queue:
-                            unstack_sources(node, execution_stack)
+                        # sleep for what's necessary before proceeding
+                        current_node.sleep()
 
-                    if execution_stack:
-                        break # something to execute, so don't sleep more
+                        asleep = {
+                            node
+                            for node in asleep
+                            if node.sleep is not None and node.sleep.remaining()
+                        }
                     else:
-                        node, sleep = min(wait_queue, key=lambda pair: pair[1])
-                        sleep()
+                        # We might have lost track after some sleeps. 
+                        # Start searching from self again
+                        current_node = self
+
+                # Save whenever we execute save_wait nodes
+                if filename and iterations and not iterations % save_wait:
+                    self.save(filename)
 
         except KeyboardInterrupt:
-            if filename is not None:
+            if filename: 
                 self.save(filename)
+
             raise
 
-        if filename is not None:
+        # Save at the end
+        if filename:
             self.save(filename)
 
-        if self.state == Node.State.FINISHED:
-            return self.result
-        else:
-            raise Exception('Tree finished with errors')
+        return self.result
 
 
     def __iter__(self): 
