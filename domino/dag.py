@@ -39,19 +39,16 @@ class DAGNode:
         elif target.name in (node.name for node in self.targets):
             raise DAGException(
                 'Repeated target name (%s)' % target.name, 
-                self, 
-                target
+                self, target
             )
 
         # Check that this addition does not produce any loops
         elif self in target:
             raise DAGException(
                 'Cycle produced by addition (%s, %s)' % (
-                    self.name, 
-                    target.name
+                    self.name, target.name
                 ),
-                self, 
-                target
+                self, target
             )
 
         # Finally, add the target
@@ -73,14 +70,12 @@ class DAGNode:
 
 
     def yield_nodes(self, order=None):
-        to_yield = [ self ]
-        yielded = set()
+        queue = [ self ]
+        queued = { self }
 
-        while to_yield:
-            node = to_yield.pop(0)
-
+        while queue:
+            node = queue.pop(0)
             yield node
-            yielded.add(node)
 
             if order:
                 targets = sorted(node.targets, key=order)
@@ -88,8 +83,9 @@ class DAGNode:
                 targets = node.targets
 
             for target in targets:
-                if target not in yielded:
-                    to_yield.append(target)
+                if target not in queued:
+                    queue.append(target)
+                    queued.add(target)
 
 
     def __getitem__(self, key):

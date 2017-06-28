@@ -111,6 +111,13 @@ class Node(DAGNode):
             del self._result
 
 
+    def reset(self):
+        if hasattr(self, '_result'):
+            del self._result
+
+        self.state = Node.State.IDLE
+
+
     def reset_errors(self):
         """
             Reset state to IDLE to this node and all its sources 
@@ -118,7 +125,7 @@ class Node(DAGNode):
         """
 
         to_idle = { self }
-        idled = set()
+        queued = { self }
 
         while to_idle:
             node = to_idle.pop()
@@ -126,11 +133,11 @@ class Node(DAGNode):
 
             if '@domino.traceback' in node.variables:
                 del node.variables['@domino.traceback']
-            idled.add(node)
-
-            # for source in node.sources:
-            #     if source not in idled:
-            #         to_idle.add(source)
+            
+            for source in node.sources:
+                if source not in queued:
+                    to_idle.add(source)
+                    queued.add(source)
 
 
     @property
@@ -145,6 +152,57 @@ class Node(DAGNode):
     @result.setter
     def result(self, value):
         self._result = value
+
+
+    def save(self, filename):
+        """
+            Saves the current state of the graph 
+            taking this node as the root in the selected file.
+        """
+
+        l = []
+
+        for node in self:
+            d = {
+                'name': node.name,
+                'state': node.state,
+                'variables': node.variables   
+            }
+
+            if node.store_result and hasattr(node, '_result'):
+                d['result'] = node.result
+
+            l.append(d)
+
+        j = json.dumps(l, indent=2)
+
+        with open(filename, 'w') as f:
+            f.write(j)
+
+
+    def load(self, filename):
+        try:
+            with open(filename) as f:
+                l = json.loads(f.read())
+        except FileNotFoundError:
+            return
+
+        nodes = list(self)
+
+        if len(nodes) != len(l):
+            raise Exception('Loaded tree doesn\'t match given tree')
+
+        for node, node_d in zip(nodes, l):
+            if node.name != node_d['name']:
+                raise Exception(
+                    'Loaded tree definition doesn\'t match given tree'
+                )
+
+            node.state = node_d['state']
+            node.variables = node_d['variables']
+
+            if 'result' in node_d:
+                node.result = node_d['result']
 
 
     def __call__(self):
@@ -175,7 +233,13 @@ class Node(DAGNode):
         if filename is not None and load:
             self.load(filename)
 
-        for node in set(self):
+        # Reset errors and their sources
+        for node in self:
+            if node.state == Node.State.ERROR:
+                node.reset_errors()
+
+        # Reset non-finished nodes or OpNodes
+        for node in self:
             if node.state != Node.State.FINISHED \
                 or not hasattr(node, '_result'):
                 node.state = Node.State.IDLE
@@ -306,77 +370,6 @@ class Node(DAGNode):
             raise Exception('Tree finished with errors')
 
 
-    def reset(self, state=State.IDLE):
-        if hasattr(self, '_result'):
-            del self._result
-
-        if state is not None:
-            self.state = state
-
-
-    def save(self, filename):
-        """
-            Saves the current state of the graph 
-            taking this node as the root in the selected file.
-        """
-
-        l = []
-        saved_nodes = set()
-
-        for node in self:
-            if node in saved_nodes: continue
-
-            d = {
-                'name': node.name,
-                'state': node.state,
-                'variables': node.variables   
-            }
-
-            if node.store_result and hasattr(node, '_result'):
-                d['result'] = node.result
-
-            l.append(d)
-            saved_nodes.add(node)
-
-        j = json.dumps(l, indent=2)
-
-        with open(filename, 'w') as f:
-            f.write(j)
-
-
-    def load(self, filename):
-        try:
-            with open(filename) as f:
-                l = json.loads(f.read())
-        except FileNotFoundError:
-            return
-
-        nodes = list(self)
-        loaded_nodes = set()
-
-        if len(set(nodes)) != len(l):
-            raise Exception('Loaded tree doesn\'t match given tree')
-
-        n = 0
-        for node in nodes:
-            if node in loaded_nodes: continue
-            node_d = l[n]            
-
-            if node.name != node_d['name']:
-                raise Exception(
-                    'Loaded tree definition doesn\'t match given tree'
-                )
-
-            node.state = node_d['state']
-            node.variables = node_d['variables']
-
-            if 'result' in node_d:
-                node.result = node_d['result']
-
-            loaded_nodes.add(node)
-            n += 1
-
-
     def __iter__(self): 
         return self.yield_nodes(order=lambda node: node.name)
 
@@ -465,6 +458,6 @@ class Root(OpNode):
         """
 
         for node in self.subnodes:
-            node.state = Node.State.IDLE
+            node.reset()
 
-        self.state = Node.State.IDLE
+        super().reset()

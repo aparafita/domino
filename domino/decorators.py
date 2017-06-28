@@ -42,6 +42,7 @@ def domino(name, node_class=None):
     if node_class is None:
         node_class = Node
 
+
     def dec(func):
         arg_names = inspect.getfullargspec(func).args
         if bound.is_bound(func):
@@ -49,19 +50,25 @@ def domino(name, node_class=None):
 
         @wraps(func)
         def f(*args, **kwargs):
+            # Create dict format to format the name of the node
+            # Assign values from *args
             format = {
                 k: args[n]
                 for n, k in enumerate(arg_names)
                 if n < len(args)
             }
 
+            # Assign values from **kwargs
             format.update(kwargs)
 
+            # Now, every input Node will be changed in format to its name
             format = {
                 k: v.name if isinstance(v, Node) else v
                 for k, v in format.items()
             }
 
+            # Finally, create the node with the formatted name 
+            # and the appropriate function parameters, using node_class
             return node_class(
                 name.format(**format), 
                 func, 
