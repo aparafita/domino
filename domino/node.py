@@ -120,6 +120,21 @@ class Node(DAGNode):
         self.state = Node.State.IDLE
 
 
+    def set_function(self, func, reset=True):
+        """
+            Changes function for this node and resets it
+        """
+        oldfunc, args, kwargs = self.item
+
+        if bound.is_bound(oldfunc) and not bound.is_bound(func):
+            func = bound(func)
+
+        self.item = (func, args, kwargs)
+        if reset: self.reset()
+
+        return self
+
+
     def reset_errors(self):
         """
             Reset state to IDLE to this node and all its sources 
