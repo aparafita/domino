@@ -160,10 +160,12 @@ class Node(DAGNode):
     @property
     def result(self):
         if hasattr(self, '_result'):
-            return self._result
+            result = self._result
         else:
             self.state = Node.State.IDLE
-            return self.run()
+            result = self.run()
+
+        return deepcopy(result)
 
 
     @result.setter
@@ -226,7 +228,7 @@ class Node(DAGNode):
         func, args, kwargs = self.item
 
         args = [
-            deepcopy(arg.result) if isinstance(arg, Node) else arg
+            arg.result if isinstance(arg, Node) else arg
             for arg in args
         ]
 
@@ -235,7 +237,7 @@ class Node(DAGNode):
             args = [ self ] + args
 
         kwargs = {
-            k: deepcopy(v.result) if isinstance(v, Node) else v
+            k: v.result if isinstance(v, Node) else v
             for k, v in kwargs.items()
         }
 
