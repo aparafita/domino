@@ -12,7 +12,7 @@ import os
 import os.path
 
 
-def notebook_init():
+def notebook_init(path=os.path.pardir):
     """
         Assuming a project is built in a root folder 
         with a notebooks subfolder where all .ipynb files are located,
@@ -24,5 +24,5 @@ def notebook_init():
     """
 
     if os.path.split(os.path.abspath(os.path.curdir))[-1] == 'notebooks':
-        sys.path.append(os.path.abspath(os.path.pardir))
-        os.chdir(os.path.pardir)
+        sys.path.append(os.path.abspath(path))
+        os.chdir(path)
